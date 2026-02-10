@@ -51,20 +51,36 @@ async def analyze_person(name: str, extra_info: str = None) -> dict:
     Returns:
         dict with keys: verdict, score, headline, reason, red_flags, green_flags, raw
     """
-    user_message = f"""Find and analyze this person's LinkedIn profile:
+    
+    # Build a better prompt that handles the case where extra_info might be None
+    if extra_info and extra_info.lower() != "none":
+        headline_info = f"Their headline from the connection request: {extra_info}"
+        headline_instruction = f"""
+4. If you cannot find their profile, USE THE HEADLINE to make your judgment: "{extra_info}"
+   - Analyze this headline for spam indicators (MLM terms, vague titles, excessive emojis, "financial freedom", etc.)
+   - A vague or spammy headline is a strong indicator even without the full profile
+"""
+    else:
+        headline_info = "No headline was provided in the connection request"
+        headline_instruction = """
+4. If you cannot find their profile AND no headline was provided, that itself is a red flag
+   - Most legitimate professionals have a headline on LinkedIn
+   - Missing headline + unfindable profile suggests a spam/fake account
+"""
+
+    user_message = f"""Analyze this LinkedIn connection request for spam indicators:
 
 Name: {name}
-Headline from connection request: {extra_info}
+{headline_info}
 
 SEARCH STRATEGY:
-1. First search: "{name}" LinkedIn
-2. If you get many results, look for Singapore-based profiles
-3. Click into the most likely profile to read their full bio
-4. If you cannot find ANY profile after searching, analyze their headline: "{extra_info}"
+1. Search: "{name}" LinkedIn
+2. Search: "{name}" LinkedIn Singapore  
+3. If you find a profile, analyze their headline, about section, and work history
+{headline_instruction}
+5. Make a decisive verdict - use all available information
 
-The headline alone can reveal spam (MLM terms, "financial freedom", vague titles, excessive emojis).
-
-DO NOT say "profile not found" without attempting multiple searches with variations of the name."""
+Remember: Respond in the EXACT format specified in your system prompt."""
 
     for attempt in range(3):
         try:
@@ -91,12 +107,11 @@ DO NOT say "profile not found" without attempting multiple searches with variati
                     raw_text += block.text
                 elif block.type == "tool_use":
                     tool_used = True
-                    logger.info(f"Claude used tool: {block.name} with input: {block.input}")
+                    logger.info(f"Claude used tool: {block.name}")
 
             # Debug logging
             logger.info(f"Tool used: {tool_used}, Got text: {bool(raw_text)}, Stop reason: {response.stop_reason}")
-            logger.info(f"Raw Claude response for {name}: '{raw_text}'")
-            logger.info(f"Full response object: {response}")
+            logger.info(f"Raw Claude response for {name}: '{raw_text[:500]}...'")  # Truncate for readability
 
             # If we have text, parse it immediately
             if raw_text:
