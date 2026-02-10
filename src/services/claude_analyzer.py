@@ -7,6 +7,9 @@ and determine if they're a spammy entrepreneur.
 import os
 import logging
 import anthropic
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 

@@ -47,3 +47,5 @@ Thumbs.db
 .coverage
 htmlcov/
 demo_output.txt
+token.json
+credentials.json
