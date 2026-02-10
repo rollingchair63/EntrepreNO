@@ -51,19 +51,20 @@ async def analyze_person(name: str, extra_info: str = None) -> dict:
     Returns:
         dict with keys: verdict, score, headline, reason, red_flags, green_flags, raw
     """
-    user_message = f"""Research this person and tell me if their LinkedIn connection request is spam:
+    user_message = f"""Find and analyze this person's LinkedIn profile:
 
 Name: {name}
-{f"Additional info from email: {extra_info}" if extra_info else ""}
+Headline from connection request: {extra_info}
 
-Instructions:
-1. Search for their LinkedIn profile using web search
-2. If found, analyze their headline, about section, and recent activity
-3. If NOT found, use the "Additional info from email" above (their headline/job title from the connection request)
-4. Vague headlines like "Entrepreneur | Empowering others" are RED FLAGS even without the full profile
-5. Make a decisive verdict - avoid UNCLEAR unless truly ambiguous
+SEARCH STRATEGY:
+1. First search: "{name}" LinkedIn
+2. If you get many results, look for Singapore-based profiles
+3. Click into the most likely profile to read their full bio
+4. If you cannot find ANY profile after searching, analyze their headline: "{extra_info}"
 
-Remember: Respond ONLY in the exact format specified in your system prompt."""
+The headline alone can reveal spam (MLM terms, "financial freedom", vague titles, excessive emojis).
+
+DO NOT say "profile not found" without attempting multiple searches with variations of the name."""
 
     for attempt in range(3):
         try:
@@ -82,22 +83,28 @@ Remember: Respond ONLY in the exact format specified in your system prompt."""
                 ]
             )
 
-            # Extract text from ALL content blocks
+            # Extract text from ALL content blocks with detailed debugging
             raw_text = ""
+            tool_used = False
             for block in response.content:
                 if hasattr(block, "text"):
                     raw_text += block.text
-                # Log tool use for debugging
                 elif block.type == "tool_use":
-                    logger.info(f"Claude used tool: {block.name}")
+                    tool_used = True
+                    logger.info(f"Claude used tool: {block.name} with input: {block.input}")
 
-            # If we got no text response, something went wrong
-            if not raw_text:
-                logger.warning(f"No text response from Claude for {name}, response: {response}")
-                return _error_response(name, "Claude did not return a text response")
-
+            # Debug logging
+            logger.info(f"Tool used: {tool_used}, Got text: {bool(raw_text)}, Stop reason: {response.stop_reason}")
             logger.info(f"Raw Claude response for {name}: '{raw_text}'")
-            return _parse_claude_response(raw_text, name)
+            logger.info(f"Full response object: {response}")
+
+            # If we have text, parse it immediately
+            if raw_text:
+                return _parse_claude_response(raw_text, name)
+
+            # If no text but tool was used, we might need to wait for the response
+            logger.warning(f"Claude used tools but returned no text for {name}")
+            return _error_response(name, "Claude searched but returned no analysis")
 
         except anthropic.RateLimitError:
             if attempt < 2:
