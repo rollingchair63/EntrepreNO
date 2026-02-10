@@ -7,6 +7,7 @@ and determine if they're a spammy entrepreneur.
 import os
 import logging
 import anthropic
+import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
