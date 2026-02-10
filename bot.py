@@ -44,7 +44,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "   • Name\n"
         "   • Headline\n"
         "   • Connections (optional)\n\n"
-        "2. Paste it here\n"
+        "2. Paste it here\n\n"
         "3. Get spam analysis!\n\n"
         "Example:\n"
         "John Doe\n"
@@ -84,6 +84,12 @@ async def example(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(message)
 
+async def end(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """End message."""
+    await update.message.reply_text(
+        "👋 Thanks for using EntrepreNO Bot!\n"
+        "Feel free to reach out if you have any questions."
+    )
 
 async def analyze_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Analyze LinkedIn profile from message."""
