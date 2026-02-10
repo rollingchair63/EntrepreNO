@@ -86,6 +86,33 @@ Instructions:
                 if hasattr(block, "text"):
                     raw_text += block.text
 
+            # If Claude used web search, do a follow-up turn to get the final answer
+            if not raw_text and response.stop_reason == "tool_use":
+                tool_results = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": "Search completed."
+                        })
+
+                follow_up = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=1024,
+                    system=SYSTEM_PROMPT,
+                    tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                    messages=[
+                        {"role": "user", "content": user_message},
+                        {"role": "assistant", "content": response.content},
+                        {"role": "user", "content": tool_results}
+                    ]
+                )
+                for block in follow_up.content:
+                    if hasattr(block, "text"):
+                        raw_text += block.text
+
+            logger.info(f"Raw Claude response for {name}: '{raw_text}'")
             return _parse_claude_response(raw_text, name)
 
         except anthropic.RateLimitError:
