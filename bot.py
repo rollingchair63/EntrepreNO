@@ -4,270 +4,165 @@ Telegram bot for detecting spammy LinkedIn entrepreneurs.
 
 import os
 import logging
-from typing import Dict
 from dotenv import load_dotenv
 
 from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 from spam_detector import analyze_linkedin_profile
 from linkedin_client import parse_profile_manually, create_sample_profile
 
-
 # Load environment variables
 load_dotenv()
 
-# Enable logging
+# Logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
 
-class EntrepreNOBot:
-    """Telegram bot for analyzing LinkedIn profiles."""
+# Command Handlers
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Welcome message."""
+    await update.message.reply_text(
+        "👋 Welcome to EntrepreNO Bot!\n\n"
+        "Send me LinkedIn profile info and I'll detect if it's spammy.\n\n"
+        "Commands:\n"
+        "/help - How to use\n"
+        "/example - See examples"
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show help."""
+    await update.message.reply_text(
+        "📖 How to use:\n\n"
+        "1. Copy LinkedIn profile info:\n"
+        "   • Name\n"
+        "   • Headline\n"
+        "   • Connections (optional)\n\n"
+        "2. Paste it here\n"
+        "3. Get spam analysis!\n\n"
+        "Example:\n"
+        "John Doe\n"
+        "CEO at StartupXYZ | Entrepreneur\n"
+        "500+ connections"
+    )
+
+
+async def example(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show example analyses."""
+    # Spam example
+    spam = create_sample_profile(
+        name="Rick Success",
+        headline="💰 CEO | Financial Freedom | DM Me To Learn How I Made $10K/Month 🚀",
+        connections=156,
+        summary="Changed my life and quit my 9-5! Limited spots available!"
+    )
+    spam_result = analyze_linkedin_profile(spam)
     
-    def __init__(self, token: str):
-        """Initialize the bot with the given token."""
-        self.token = token
-        self.application = None
+    # Legit example
+    legit = create_sample_profile(
+        name="Sarah Johnson",
+        headline="Software Engineer at Google | Python, ML, AI",
+        connections=847,
+        summary="Passionate about building scalable systems."
+    )
+    legit_result = analyze_linkedin_profile(legit)
     
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle the /start command."""
-        welcome_message = (
-            "👋 Welcome to EntrepreNO Bot!\n\n"
-            "I help you detect spammy entrepreneurs before you accept their LinkedIn requests.\n\n"
-            "🔍 How to use:\n"
-            "1. Copy the LinkedIn profile information (name, headline, etc.)\n"
-            "2. Send it to me as a message\n"
-            "3. I'll analyze it and give you a spam confidence rating!\n\n"
-            "📝 Commands:\n"
-            "/start - Show this welcome message\n"
-            "/help - Get help on how to use the bot\n"
-            "/analyze - Analyze a LinkedIn profile\n"
-            "/example - See example analyses\n\n"
-            "Just paste the LinkedIn profile info to get started!"
-        )
-        await update.message.reply_text(welcome_message)
+    message = (
+        f"🔴 SPAM ({spam_result['score']}%)\n"
+        f"{spam['headline']}\n"
+        f"→ {spam_result['verdict']}\n\n"
+        f"🟢 LEGIT ({legit_result['score']}%)\n"
+        f"{legit['headline']}\n"
+        f"→ {legit_result['verdict']}"
+    )
     
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle the /help command."""
-        help_message = (
-            "📖 How to use EntrepreNO Bot:\n\n"
-            "1️⃣ Go to LinkedIn and find a connection request\n"
-            "2️⃣ Copy the person's information:\n"
-            "   - Name\n"
-            "   - Headline (the text under their name)\n"
-            "   - Number of connections\n"
-            "   - Summary/About section (optional)\n\n"
-            "3️⃣ Paste it here in this format:\n"
-            "```\n"
-            "John Doe\n"
-            "CEO at StartupXYZ | Entrepreneur | Investor\n"
-            "500+ connections\n"
-            "I help people achieve financial freedom...\n"
-            "```\n\n"
-            "4️⃣ I'll analyze it and tell you if it's spam!\n\n"
-            "💡 Tip: You can send just the headline if that's all you have.\n\n"
-            "Use /example to see some sample analyses."
-        )
-        await update.message.reply_text(help_message, parse_mode='Markdown')
+    await update.message.reply_text(message)
+
+
+async def analyze_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Analyze LinkedIn profile from message."""
+    text = update.message.text
     
-    async def analyze_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle the /analyze command."""
-        message = (
-            "📊 Ready to analyze!\n\n"
-            "Please send me the LinkedIn profile information:\n"
-            "- Name\n"
-            "- Headline\n"
-            "- Connections (optional)\n"
-            "- Summary (optional)\n\n"
-            "I'll analyze it for spam indicators!"
-        )
-        await update.message.reply_text(message)
+    # Show analyzing message
+    msg = await update.message.reply_text("🔍 Analyzing...")
     
-    async def example_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle the /example command - show sample analyses."""
-        # Example 1: Obvious spam
-        spam_profile = create_sample_profile(
-            name="Rick Success",
-            headline="💰 CEO & Founder | Helping You Achieve Financial Freedom | DM Me To Learn How I Made $10K/Month 🚀",
-            connections=156,
-            summary="Changed my life and quit my 9-5! Now I help others do the same. Limited spots available!"
-        )
-        spam_result = analyze_linkedin_profile(spam_profile)
+    try:
+        # Parse profile
+        profile = parse_profile_manually(text)
         
-        example1 = (
-            "🔴 Example 1: SPAM Profile\n\n"
-            f"Name: {spam_profile['name']}\n"
-            f"Headline: {spam_profile['headline']}\n"
-            f"Connections: {spam_profile['connections']}\n\n"
-            f"📊 Spam Score: {spam_result['score']}%\n"
-            f"{spam_result['verdict']}\n\n"
-            f"Reasons:\n"
-        )
-        for reason in spam_result['reasons']:
-            example1 += f"• {reason}\n"
-        
-        # Example 2: Legitimate profile
-        legit_profile = create_sample_profile(
-            name="Sarah Johnson",
-            headline="Software Engineer at Google | Python, ML, AI",
-            connections=847,
-            summary="Passionate about building scalable systems and machine learning applications."
-        )
-        legit_result = analyze_linkedin_profile(legit_profile)
-        
-        example2 = (
-            "\n\n🟢 Example 2: LEGITIMATE Profile\n\n"
-            f"Name: {legit_profile['name']}\n"
-            f"Headline: {legit_profile['headline']}\n"
-            f"Connections: {legit_profile['connections']}\n\n"
-            f"📊 Spam Score: {legit_result['score']}%\n"
-            f"{legit_result['verdict']}\n\n"
-            f"Reasons:\n"
-        )
-        for reason in legit_result['reasons']:
-            example2 += f"• {reason}\n"
-        
-        await update.message.reply_text(example1 + example2)
-    
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle regular text messages containing profile information."""
-        text = update.message.text
-        
-        # Send "analyzing..." message
-        analyzing_msg = await update.message.reply_text("🔍 Analyzing profile...")
-        
-        try:
-            # Parse the profile information
-            profile_data = parse_profile_manually(text)
-            
-            # If no meaningful data was parsed, provide guidance
-            if not profile_data['name'] and not profile_data['headline']:
-                await analyzing_msg.edit_text(
-                    "❌ I couldn't parse the profile information.\n\n"
-                    "Please send the profile in this format:\n"
-                    "Name\n"
-                    "Headline/Title\n"
-                    "Number of connections (optional)\n"
-                    "Summary (optional)\n\n"
-                    "Or use /help for more information."
-                )
-                return
-            
-            # Analyze the profile
-            result = analyze_linkedin_profile(profile_data)
-            
-            # Format the response
-            response = self._format_analysis_result(profile_data, result)
-            
-            # Send the result
-            await analyzing_msg.edit_text(response)
-            
-        except Exception as e:
-            logger.error(f"Error analyzing profile: {e}")
-            await analyzing_msg.edit_text(
-                "❌ An error occurred while analyzing the profile.\n"
-                "Please try again or use /help for guidance."
+        if not profile['name'] and not profile['headline']:
+            await msg.edit_text(
+                "❌ Couldn't parse profile.\n\n"
+                "Send it like this:\n"
+                "Name\n"
+                "Headline\n"
+                "Connections (optional)"
             )
-    
-    def _format_analysis_result(self, profile_data: Dict, result: Dict) -> str:
-        """Format the analysis result into a readable message."""
-        score = result['score']
-        verdict = result['verdict']
-        reasons = result['reasons']
+            return
         
-        # Create progress bar for score
+        # Analyze
+        result = analyze_linkedin_profile(profile)
+        
+        # Format response
+        score = result['score']
         filled = int(score / 10)
         bar = '█' * filled + '░' * (10 - filled)
         
-        message = (
-            "🎯 LinkedIn Profile Analysis\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        )
+        response = "🎯 Analysis\n" + "━" * 20 + "\n\n"
         
-        if profile_data.get('name'):
-            message += f"👤 Name: {profile_data['name']}\n"
-        if profile_data.get('headline'):
-            message += f"💼 Headline: {profile_data['headline']}\n"
-        if profile_data.get('connections'):
-            message += f"🔗 Connections: {profile_data['connections']}\n"
+        if profile.get('name'):
+            response += f"👤 {profile['name']}\n"
+        if profile.get('headline'):
+            response += f"💼 {profile['headline']}\n"
+        if profile.get('connections'):
+            response += f"🔗 {profile['connections']}\n"
         
-        message += (
-            f"\n📊 Spam Score: {score}%\n"
-            f"{bar} {score}%\n\n"
-            f"{verdict}\n\n"
-            f"📋 Analysis Details:\n"
-        )
+        response += f"\n📊 Spam Score: {score}%\n{bar}\n\n{result['verdict']}\n\n"
         
-        for reason in reasons:
-            message += f"• {reason}\n"
+        for reason in result['reasons']:
+            response += f"• {reason}\n"
         
         # Add recommendation
         if score >= 60:
-            message += (
-                "\n⚠️ Recommendation:\n"
-                "This profile shows significant spam indicators. "
-                "Consider declining this connection request."
-            )
+            response += "\n⚠️ High spam risk - consider declining"
         elif score >= 40:
-            message += (
-                "\n💭 Recommendation:\n"
-                "This profile has some suspicious elements. "
-                "Review their profile carefully before accepting."
-            )
+            response += "\n💭 Some red flags - review carefully"
         else:
-            message += (
-                "\n✅ Recommendation:\n"
-                "This profile appears relatively normal. "
-                "Use your judgment as always!"
-            )
+            response += "\n✅ Looks relatively normal"
         
-        return message
-    
-    def run(self) -> None:
-        """Run the bot."""
-        # Create the Application
-        self.application = Application.builder().token(self.token).build()
+        await msg.edit_text(response)
         
-        # Add command handlers
-        self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("analyze", self.analyze_command))
-        self.application.add_handler(CommandHandler("example", self.example_command))
-        
-        # Add message handler for profile analysis
-        self.application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
-        )
-        
-        # Start the bot
-        logger.info("Starting EntrepreNO Bot...")
-        self.application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        await msg.edit_text("❌ Error analyzing profile. Try /help")
 
 
 def main():
-    """Main function to run the bot."""
-    # Get bot token from environment variable
+    """Run the bot."""
     token = os.getenv('TELEGRAM_BOT_TOKEN')
     
     if not token:
-        logger.error("TELEGRAM_BOT_TOKEN not found in environment variables!")
-        logger.error("Please create a .env file with your bot token.")
-        logger.error("See .env.example for reference.")
+        logger.error("TELEGRAM_BOT_TOKEN not found in .env file!")
         return
     
-    # Create and run the bot
-    bot = EntrepreNOBot(token)
-    bot.run()
+    # Create application
+    app = Application.builder().token(token).build()
+    
+    # Add handlers
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("example", example))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_profile))
+    
+    # Run
+    logger.info("Starting EntrepreNO Bot...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == '__main__':
