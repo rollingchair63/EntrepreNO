@@ -4,6 +4,7 @@ Handles retrieving connection requests and profile data from LinkedIn.
 """
 
 import os
+import re
 import requests
 from typing import List, Dict, Optional
 
@@ -111,7 +112,6 @@ def parse_profile_manually(profile_text: str) -> Dict:
         # Look for connection count
         elif 'connection' in line.lower():
             # Extract number from text like "500+ connections"
-            import re
             match = re.search(r'(\d+)\+?', line)
             if match:
                 profile_data['connections'] = int(match.group(1))

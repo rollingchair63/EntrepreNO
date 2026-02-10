@@ -64,8 +64,11 @@ class SpamDetector:
         # Combine text fields for analysis
         full_text = f"{name} {headline} {summary}"
         
-        # Check for spam keywords in headline (weighted higher)
-        headline_spam_count = sum(1 for keyword in self.spam_keywords if keyword in headline)
+        # Check for spam keywords in headline (weighted higher) using word boundaries
+        headline_spam_count = sum(
+            1 for keyword in self.spam_keywords 
+            if re.search(r'\b' + re.escape(keyword) + r'\b', headline, re.IGNORECASE)
+        )
         if headline_spam_count >= 3:
             score += 30
             reasons.append(f"Multiple spam keywords in headline ({headline_spam_count} found)")
@@ -73,8 +76,11 @@ class SpamDetector:
             score += 15
             reasons.append(f"Spam keywords in headline ({headline_spam_count} found)")
         
-        # Check for red flag phrases
-        red_flag_count = sum(1 for flag in self.red_flags if flag in full_text)
+        # Check for red flag phrases using word boundaries
+        red_flag_count = sum(
+            1 for flag in self.red_flags 
+            if re.search(r'\b' + re.escape(flag) + r'\b', full_text, re.IGNORECASE)
+        )
         if red_flag_count > 0:
             score += red_flag_count * 15
             reasons.append(f"Red flag phrases detected ({red_flag_count} found)")
@@ -119,20 +125,23 @@ class SpamDetector:
             reasons.append("Claims CEO/Founder title with low connections")
         
         # Check for generic/fake-sounding names
-        generic_patterns = [
-            r'\b(success|wealth|money|cash|profit|income)\b',
-            r'\b(digital|online|virtual)\s+(entrepreneur|expert|guru)\b',
-        ]
-        for pattern in generic_patterns:
-            if re.search(pattern, full_text):
-                score += 10
-                reasons.append("Generic or promotional language detected")
-                break
+        success_pattern = r'\b(success|wealth|money|cash|profit|income)\b'
+        guru_pattern = r'\b(digital|online|virtual)\s+(entrepreneur|expert|guru)\b'
         
-        # Check for multiple income claims
+        if re.search(success_pattern, full_text, re.IGNORECASE):
+            score += 10
+            reasons.append("Money/success-related terms in name or profile")
+        elif re.search(guru_pattern, full_text, re.IGNORECASE):
+            score += 10
+            reasons.append("Generic 'expert/guru' language detected")
+        
+        # Check for multiple income claims using word boundaries
         income_keywords = ['passive income', 'multiple income', 'residual income', 
                           'recurring revenue', 'six figure', 'seven figure', '6 figure', '7 figure']
-        income_count = sum(1 for keyword in income_keywords if keyword in full_text)
+        income_count = sum(
+            1 for keyword in income_keywords 
+            if re.search(r'\b' + re.escape(keyword) + r'\b', full_text, re.IGNORECASE)
+        )
         if income_count >= 2:
             score += 20
             reasons.append("Multiple income-related claims")
