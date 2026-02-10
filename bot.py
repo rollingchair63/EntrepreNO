@@ -166,6 +166,28 @@ def main():
     app.add_handler(CommandHandler("example", example))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_profile))
     
+    # Start health check server for Render (runs in background)
+    import threading
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    
+    class HealthCheck(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'Bot is running')
+        def log_message(self, format, *args):
+            pass  # Silence HTTP logs
+    
+    def run_health_server():
+        port = int(os.getenv('PORT', 10000))
+        server = HTTPServer(('0.0.0.0', port), HealthCheck)
+        logger.info(f"Health check server running on port {port}")
+        server.serve_forever()
+    
+    # Start health check in background
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
+
     # Run
     logger.info("Starting EntrepreNO Bot...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
