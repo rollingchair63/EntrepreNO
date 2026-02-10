@@ -167,7 +167,7 @@ def main():
             self.end_headers()
             self.wfile.write(b'Bot is running')
         def log_message(self, format, *args):
-            pass  # Silence HTTP logs
+            pass
     
     def run_health_server():
         port = int(os.getenv('PORT', 10000))
@@ -175,22 +175,21 @@ def main():
         logger.info(f"Health check server running on port {port}")
         server.serve_forever()
     
-    # Start health check in background
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
     
-    # Create application
-    app = Application.builder().token(token).build()
+    # Create application - build it fresh
+    application = Application.builder().token(token).build()
     
     # Add handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("example", example))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_profile))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("example", example))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_profile))
     
-    # Run bot
+    # Start the bot
     logger.info("Starting EntrepreNO Bot...")
-    app.run_polling(drop_pending_updates=True)
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == '__main__':
