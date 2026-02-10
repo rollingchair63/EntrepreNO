@@ -132,6 +132,83 @@ Respond in the exact format from your system prompt."""
 
     return _error_response(name, "Max retries exceeded")
 
+async def analyze_profile_url(url: str) -> dict:
+    """
+    Fetch and analyze a LinkedIn profile directly from URL.
+
+    Args:
+        url: LinkedIn profile URL (e.g., https://www.linkedin.com/in/username)
+
+    Returns:
+        dict with keys: verdict, score, headline, reason, red_flags, green_flags, raw
+    """
+    
+    # Extract name from URL for the result
+    name = url.split("/in/")[-1].strip("/").replace("-", " ").title()
+    
+    user_message = f"""Fetch and analyze this LinkedIn profile for spam indicators:
+
+URL: {url}
+
+Use web_fetch to read the profile page, then analyze:
+- Their headline
+- About/bio section  
+- Current job and company
+- Work history
+- Any visible activity
+
+Red flags: MLM/network marketing, "financial freedom", "passive income", life/business coaching with no credentials, crypto/forex trading, dropshipping, "quit my 9-5", excessive emojis, vague titles like "CEO | Entrepreneur | Visionary"
+Green flags: Real job at real company, technical skills, specific accomplishments, education credentials
+
+Respond in the exact format from your system prompt."""
+
+    for attempt in range(3):
+        try:
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=2000,
+                system=SYSTEM_PROMPT,
+                tools=[
+                    {
+                        "type": "web_search_20250305",
+                        "name": "web_search",
+                    },
+                    {
+                        "type": "web_fetch_20250305",
+                        "name": "web_fetch",
+                    }
+                ],
+                messages=[
+                    {"role": "user", "content": user_message}
+                ]
+            )
+
+            # Extract text from response
+            raw_text = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    raw_text += block.text
+
+            logger.info(f"Analyzed profile URL: {url}")
+            
+            if raw_text:
+                return _parse_claude_response(raw_text, name)
+
+            return _error_response(name, "No analysis returned")
+
+        except anthropic.RateLimitError:
+            if attempt < 2:
+                wait = 15 * (attempt + 1)
+                await asyncio.sleep(wait)
+            else:
+                return _error_response(name, "Rate limit reached")
+
+        except Exception as e:
+            logger.error(f"Profile URL analysis error: {e}")
+            return _error_response(name, str(e)[:100])
+
+    return _error_response(name, "Max retries exceeded")
+
         
 def _parse_claude_response(text: str, name: str) -> dict:
     """Parse Claude's structured response into a dict."""
