@@ -157,15 +157,6 @@ def main():
         logger.error("TELEGRAM_BOT_TOKEN not found in .env file!")
         return
     
-    # Create application
-    app = Application.builder().token(token).build()
-    
-    # Add handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("example", example))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_profile))
-    
     # Start health check server for Render (runs in background)
     import threading
     from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -187,10 +178,19 @@ def main():
     # Start health check in background
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
-
-    # Run
+    
+    # Create application
+    app = Application.builder().token(token).build()
+    
+    # Add handlers
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("example", example))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_profile))
+    
+    # Run bot
     logger.info("Starting EntrepreNO Bot...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling()
 
 
 if __name__ == '__main__':
