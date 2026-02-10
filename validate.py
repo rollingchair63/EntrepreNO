@@ -3,7 +3,7 @@ End-to-end validation test for the EntrepreNO system.
 This validates the complete flow from profile input to spam detection.
 """
 
-from spam_detector import analyze_linkedin_profile
+from src.services.spam_detector import analyze_linkedin_profile
 from linkedin_client import parse_profile_manually
 
 

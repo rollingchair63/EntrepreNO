@@ -3,7 +3,7 @@ Simple demonstration of the spam detection system.
 This runs automatically without user input.
 """
 
-from spam_detector import analyze_linkedin_profile
+from src.services.spam_detector import analyze_linkedin_profile
 from linkedin_client import create_sample_profile
 
 

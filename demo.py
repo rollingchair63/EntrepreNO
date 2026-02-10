@@ -3,7 +3,7 @@ Interactive demo script for the EntrepreNO spam detector.
 Run this to test the spam detection without needing a Telegram bot.
 """
 
-from spam_detector import analyze_linkedin_profile
+from src.services.spam_detector import analyze_linkedin_profile
 from linkedin_client import parse_profile_manually
 
 

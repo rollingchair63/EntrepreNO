@@ -1,5 +1,10 @@
 """
-Telegram bot for detecting spammy LinkedIn entrepreneurs.
+EntrepreNO Bot — detects spammy LinkedIn connection requests.
+
+Flow:
+    /check → reads Gmail for LinkedIn connection emails
+           → Claude searches each person on LinkedIn
+           → returns verdict: spam or legit
 """
 
 import os
@@ -9,188 +14,185 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-from spam_detector import analyze_linkedin_profile
-from linkedin_client import parse_profile_manually, create_sample_profile
+from src.services.gmail_service import fetch_connection_requests
+from src.services.claude_analyzer import analyze_person, format_analysis_message
 
-# Load environment variables
 load_dotenv()
 
-# Logging
 logging.basicConfig(
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
 
-# Command Handlers
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Welcome message."""
     await update.message.reply_text(
         "👋 Welcome to EntrepreNO Bot!\n\n"
-        "Send me LinkedIn profile info and I'll detect if it's spammy.\n\n"
+        "I check your LinkedIn connection requests and tell you if they're spammy.\n\n"
         "Commands:\n"
-        "/help - How to use\n"
-        "/example - See examples"
+        "/check — scan latest connection requests from Gmail\n"
+        "/lookup [name] — manually research someone\n"
+        "/help — how to use"
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show help."""
     await update.message.reply_text(
         "📖 How to use:\n\n"
-        "1. Copy LinkedIn profile info:\n"
-        "   • Name\n"
-        "   • Headline\n"
-        "   • Connections (optional)\n\n"
-        "2. Paste it here\n\n"
-        "3. Get spam analysis!\n\n"
-        "Example:\n"
-        "John Doe\n"
-        "CEO at StartupXYZ | Entrepreneur\n"
-        "500+ connections"
+        "Option 1 — Auto:\n"
+        "  /check\n"
+        "  Reads your Gmail for LinkedIn\n"
+        "  connection request emails and\n"
+        "  scores each person.\n\n"
+        "Option 2 — Manual:\n"
+        "  /lookup John Doe\n"
+        "  Research any person by name.\n\n"
+        "First time setup:\n"
+        "  Run: python -m src.services.gmail_service\n"
+        "  to authorize Gmail access."
     )
 
 
-async def example(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show example analyses."""
-    # Spam example
-    spam = create_sample_profile(
-        name="Rick Success",
-        headline="💰 CEO | Financial Freedom | DM Me To Learn How I Made $10K/Month 🚀",
-        connections=156,
-        summary="Changed my life and quit my 9-5! Limited spots available!"
-    )
-    spam_result = analyze_linkedin_profile(spam)
-    
-    # Legit example
-    legit = create_sample_profile(
-        name="Sarah Johnson",
-        headline="Software Engineer at Google | Python, ML, AI",
-        connections=847,
-        summary="Passionate about building scalable systems."
-    )
-    legit_result = analyze_linkedin_profile(legit)
-    
-    message = (
-        f"🔴 SPAM ({spam_result['score']}%)\n"
-        f"{spam['headline']}\n"
-        f"→ {spam_result['verdict']}\n\n"
-        f"🟢 LEGIT ({legit_result['score']}%)\n"
-        f"{legit['headline']}\n"
-        f"→ {legit_result['verdict']}"
-    )
-    
-    await update.message.reply_text(message)
+async def check_gmail(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fetch LinkedIn connection request emails and analyze each person."""
+    msg = await update.message.reply_text("📬 Checking Gmail...")
 
-# async def end(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     """End message."""
-#     await update.message.reply_text(
-#         "👋 Thanks for using EntrepreNO Bot!\n"
-#         "Feel free to reach out if you have any questions."
-#     )
-
-async def analyze_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Analyze LinkedIn profile from message."""
-    text = update.message.text
-    
-    # Show analyzing message
-    msg = await update.message.reply_text("🔍 Analyzing...")
-    
     try:
-        # Parse profile
-        profile = parse_profile_manually(text)
-        
-        if not profile['name'] and not profile['headline']:
-            await msg.edit_text(
-                "❌ Couldn't parse profile.\n\n"
-                "Send it like this:\n"
-                "Name\n"
-                "Headline\n"
-                "Connections (optional)"
-            )
-            return
-        
-        # Analyze
-        result = analyze_linkedin_profile(profile)
-        
-        # Format response
-        score = result['score']
-        filled = int(score / 10)
-        bar = '█' * filled + '░' * (10 - filled)
-        
-        response = "🎯 Analysis\n" + "━" * 20 + "\n\n"
-        
-        if profile.get('name'):
-            response += f"👤 {profile['name']}\n"
-        if profile.get('headline'):
-            response += f"💼 {profile['headline']}\n"
-        if profile.get('connections'):
-            response += f"🔗 {profile['connections']}\n"
-        
-        response += f"\n📊 Spam Score: {score}%\n{bar}\n\n{result['verdict']}\n\n"
-        
-        for reason in result['reasons']:
-            response += f"• {reason}\n"
-        
-        # Add recommendation
-        if score >= 60:
-            response += "\n⚠️ High spam risk - consider declining"
-        elif score >= 40:
-            response += "\n💭 Some red flags - review carefully"
-        else:
-            response += "\n✅ Looks relatively normal"
-        
-        await msg.edit_text(response)
-        
+        requests = fetch_connection_requests(max_results=10)
+    except FileNotFoundError:
+        await msg.edit_text(
+            "❌ Gmail not authorized yet.\n\n"
+            "Run this once in your terminal:\n"
+            "`python -m src.services.gmail_service`"
+        )
+        return
     except Exception as e:
-        logger.error(f"Error: {e}")
-        await msg.edit_text("❌ Error analyzing profile. Try /help")
+        logger.error(f"Gmail fetch error: {e}")
+        await msg.edit_text(f"❌ Gmail error: {str(e)[:200]}")
+        return
 
+    if not requests:
+        await msg.edit_text(
+            "📭 No new LinkedIn connection request emails found.\n\n"
+            "Make sure LinkedIn email notifications are enabled."
+        )
+        return
+
+    await msg.edit_text(f"🔍 Found {len(requests)} request(s). Researching each one...")
+
+    for i, req in enumerate(requests, 1):
+        name = req["name"]
+        extra = req.get("extra_info")
+
+        # Send a placeholder message per person
+        person_msg = await update.message.reply_text(f"🔎 Researching {name}...")
+
+        try:
+            result = await analyze_person(name, extra)
+            response = format_analysis_message(result)
+            await person_msg.edit_text(response)
+        except Exception as e:
+            logger.error(f"Analysis error for {name}: {e}")
+            await person_msg.edit_text(f"❌ Could not analyze {name}: {str(e)[:100]}")
+
+
+async def lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manually look up a person by name. Usage: /lookup John Doe"""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /lookup [full name]\n"
+            "Example: /lookup John Doe"
+        )
+        return
+
+    name = " ".join(context.args)
+    msg = await update.message.reply_text(f"🔎 Researching {name}...")
+
+    try:
+        result = await analyze_person(name)
+        response = format_analysis_message(result)
+        await msg.edit_text(response)
+    except Exception as e:
+        logger.error(f"Lookup error for {name}: {e}")
+        await msg.edit_text(f"❌ Could not analyze {name}: {str(e)[:100]}")
+
+
+async def unknown_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle plain text messages as manual name lookups."""
+    text = update.message.text.strip()
+
+    # If it looks like a name (2-4 words, title case) treat it as a lookup
+    words = text.split()
+    if 2 <= len(words) <= 4 and all(w[0].isupper() for w in words if w):
+        msg = await update.message.reply_text(f"🔎 Researching {text}...")
+        try:
+            result = await analyze_person(text)
+            response = format_analysis_message(result)
+            await msg.edit_text(response)
+        except Exception as e:
+            await msg.edit_text(f"❌ Could not analyze {text}: {str(e)[:100]}")
+    else:
+        await update.message.reply_text(
+            "Not sure what to do with that.\n\n"
+            "Try:\n"
+            "• /check — scan Gmail\n"
+            "• /lookup John Doe — research someone\n"
+            "• Just type a name like: John Doe"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main():
-    """Run the bot."""
-    token = os.getenv('TELEGRAM_BOT_TOKEN')
-    
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        logger.error("TELEGRAM_BOT_TOKEN not found in .env file!")
+        logger.error("TELEGRAM_BOT_TOKEN not set in .env!")
         return
-    
-    # Start health check server for Render (runs in background)
+
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_key:
+        logger.error("ANTHROPIC_API_KEY not set in .env!")
+        return
+
+    # Health check server for Render
     import threading
     from http.server import HTTPServer, BaseHTTPRequestHandler
-    
+
     class HealthCheck(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b'Bot is running')
+            self.wfile.write(b"Bot is running")
         def log_message(self, format, *args):
             pass
-    
+
     def run_health_server():
-        port = int(os.getenv('PORT', 10000))
-        server = HTTPServer(('0.0.0.0', port), HealthCheck)
-        logger.info(f"Health check server running on port {port}")
+        port = int(os.getenv("PORT", 10000))
+        server = HTTPServer(("0.0.0.0", port), HealthCheck)
+        logger.info(f"Health check on port {port}")
         server.serve_forever()
-    
-    health_thread = threading.Thread(target=run_health_server, daemon=True)
-    health_thread.start()
-    
-    # Create application - build it fresh
+
+    threading.Thread(target=run_health_server, daemon=True).start()
+
+    # Build bot
     application = Application.builder().token(token).build()
-    
-    # Add handlers
+
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("example", example))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_profile))
-    
-    # Start the bot
-    logger.info("Starting EntrepreNO Bot...")
+    application.add_handler(CommandHandler("check", check_gmail))
+    application.add_handler(CommandHandler("lookup", lookup))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_message))
+
+    logger.info("EntrepreNO Bot running...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

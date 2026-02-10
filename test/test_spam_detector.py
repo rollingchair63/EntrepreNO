@@ -2,7 +2,7 @@
 Test script for the spam detection system.
 """
 
-from spam_detector import analyze_linkedin_profile
+from src.services.spam_detector import analyze_linkedin_profile
 from linkedin_client import create_sample_profile
 
 
