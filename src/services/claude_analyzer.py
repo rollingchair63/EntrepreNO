@@ -57,11 +57,13 @@ Name: {name}
 {f"Additional info from email: {extra_info}" if extra_info else ""}
 
 Instructions:
-1. Search for: site:linkedin.com "{name}"
-2. Also search: "{name}" Singapore entrepreneur
-3. If you cannot find their LinkedIn profile, use any available info — especially the "Additional info from email" above, which contains their headline/job title.
-4. A vague headline like "Entrepreneur | Empowering others | Passionate & Driven" is itself a strong red flag even without the full profile.
-5. Make a verdict even with limited info — do not default to UNCLEAR just because the profile wasn't found."""
+1. Search for their LinkedIn profile using web search
+2. If found, analyze their headline, about section, and recent activity
+3. If NOT found, use the "Additional info from email" above (their headline/job title from the connection request)
+4. Vague headlines like "Entrepreneur | Empowering others" are RED FLAGS even without the full profile
+5. Make a decisive verdict - avoid UNCLEAR unless truly ambiguous
+
+Remember: Respond ONLY in the exact format specified in your system prompt."""
 
     for attempt in range(3):
         try:
@@ -80,44 +82,26 @@ Instructions:
                 ]
             )
 
-            # Extract text from response
+            # Extract text from ALL content blocks
             raw_text = ""
             for block in response.content:
                 if hasattr(block, "text"):
                     raw_text += block.text
+                # Log tool use for debugging
+                elif block.type == "tool_use":
+                    logger.info(f"Claude used tool: {block.name}")
 
-            # If Claude used web search, do a follow-up turn to get the final answer
-            if not raw_text and response.stop_reason == "tool_use":
-                tool_results = []
-                for block in response.content:
-                    if block.type == "tool_use":
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": "Search completed."
-                        })
-
-                follow_up = client.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=1024,
-                    system=SYSTEM_PROMPT,
-                    tools=[{"type": "web_search_20250305", "name": "web_search"}],
-                    messages=[
-                        {"role": "user", "content": user_message},
-                        {"role": "assistant", "content": response.content},
-                        {"role": "user", "content": tool_results}
-                    ]
-                )
-                for block in follow_up.content:
-                    if hasattr(block, "text"):
-                        raw_text += block.text
+            # If we got no text response, something went wrong
+            if not raw_text:
+                logger.warning(f"No text response from Claude for {name}, response: {response}")
+                return _error_response(name, "Claude did not return a text response")
 
             logger.info(f"Raw Claude response for {name}: '{raw_text}'")
             return _parse_claude_response(raw_text, name)
 
         except anthropic.RateLimitError:
             if attempt < 2:
-                wait = 15 * (attempt + 1)  # 15s, then 30s
+                wait = 15 * (attempt + 1)
                 logger.info(f"Rate limited for {name}, retrying in {wait}s (attempt {attempt + 1}/3)...")
                 await asyncio.sleep(wait)
             else:
@@ -131,7 +115,7 @@ Instructions:
         except Exception as e:
             logger.error(f"Claude analysis error for {name}: {e}")
             return _error_response(name, str(e)[:100])
-
+        
 def _parse_claude_response(text: str, name: str) -> dict:
     """Parse Claude's structured response into a dict."""
     result = {
