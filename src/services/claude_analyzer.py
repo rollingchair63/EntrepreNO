@@ -121,26 +121,31 @@ def _parse_claude_response(text: str, name: str) -> dict:
     if not text:
         return result
 
-    lines = text.strip().splitlines()
-    for line in lines:
-        line = line.strip()
-        if line.startswith("VERDICT:"):
-            result["verdict"] = line.replace("VERDICT:", "").strip()
-        elif line.startswith("SCORE:"):
-            try:
-                result["score"] = int(line.replace("SCORE:", "").strip())
-            except ValueError:
-                pass
-        elif line.startswith("HEADLINE:"):
-            result["headline"] = line.replace("HEADLINE:", "").strip()
-        elif line.startswith("REASON:"):
-            result["reason"] = line.replace("REASON:", "").strip()
-        elif line.startswith("RED FLAGS:"):
-            flags = line.replace("RED FLAGS:", "").strip()
-            result["red_flags"] = [f.strip() for f in flags.split(",") if f.strip() and f.strip() != "None"]
-        elif line.startswith("GREEN FLAGS:"):
-            flags = line.replace("GREEN FLAGS:", "").strip()
-            result["green_flags"] = [f.strip() for f in flags.split(",") if f.strip() and f.strip() != "None"]
+    import re
+
+    # Extract each field using regex so multiline values are captured
+    patterns = {
+        "verdict": r"VERDICT:\s*(.+?)(?=\n[A-Z ]+:|$)",
+        "score":   r"SCORE:\s*(\d+)",
+        "headline": r"HEADLINE:\s*(.+?)(?=\n[A-Z ]+:|$)",
+        "reason":  r"REASON:\s*(.+?)(?=\n[A-Z ]+:|$)",
+        "red_flags": r"RED FLAGS:\s*(.+?)(?=\n[A-Z ]+:|$)",
+        "green_flags": r"GREEN FLAGS:\s*(.+?)(?=\n[A-Z ]+:|$)",
+    }
+
+    for field, pattern in patterns.items():
+        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+        if match:
+            value = match.group(1).strip()
+            if field == "score":
+                try:
+                    result["score"] = int(value)
+                except ValueError:
+                    pass
+            elif field in ("red_flags", "green_flags"):
+                result[field] = [f.strip() for f in value.split(",") if f.strip() and f.strip().lower() != "none"]
+            else:
+                result[field] = value
 
     return result
 
