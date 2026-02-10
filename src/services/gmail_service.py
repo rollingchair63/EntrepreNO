@@ -76,7 +76,7 @@ def fetch_connection_requests(max_results: int = 10) -> list[dict]:
     service = get_gmail_service()
 
     # LinkedIn sends connection requests from this address
-    query = 'from:invitations@linkedin.com subject:"wants to connect"'
+    query = 'from:invitations@linkedin.com (subject:"I want to connect" OR subject:"You have an invitation")'
 
     results = (
         service.users()
@@ -103,19 +103,26 @@ def fetch_connection_requests(max_results: int = 10) -> list[dict]:
 
 
 def _parse_connection_email(service, msg_id: str) -> dict | None:
-    """Fetch and parse a single LinkedIn connection email."""
     msg = service.users().messages().get(
         userId="me", id=msg_id, format="full"
     ).execute()
 
     headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
     subject = headers.get("Subject", "")
-    body = _extract_body(msg["payload"])
+    
+    # ✅ Extract name from "From" header 
+    from_header = headers.get("From", "")
+    name_match = re.match(r'^"?(.+?)"?\s*<', from_header)
+    name = name_match.group(1).strip() if name_match else None
 
-    name = _extract_name(subject, body)
+    if not name:
+        body = _extract_body(msg["payload"])
+        name = _extract_name(subject, body)  # fallback
+
     if not name:
         return None
 
+    body = _extract_body(msg["payload"])
     extra_info = _extract_extra_info(body)
 
     return {
