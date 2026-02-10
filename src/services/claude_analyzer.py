@@ -45,48 +45,49 @@ async def analyze_person(name: str, extra_info: str = None) -> dict:
     Research a person on LinkedIn via Claude web search and return analysis.
 
     Args:
-        name: Person's full name from the LinkedIn email
-        extra_info: Any extra context from the email (e.g. their company)
+        name: Person's full name
+        extra_info: Optional headline/job title (only from emails)
 
     Returns:
         dict with keys: verdict, score, headline, reason, red_flags, green_flags, raw
     """
     
-    # Build a better prompt that handles the case where extra_info might be None
+    # Build prompt based on whether this is from email or manual lookup
     if extra_info and extra_info.lower() != "none":
-        headline_info = f"Their headline from the connection request: {extra_info}"
-        headline_instruction = f"""
-4. If you cannot find their profile, USE THE HEADLINE to make your judgment: "{extra_info}"
-   - Analyze this headline for spam indicators (MLM terms, vague titles, excessive emojis, "financial freedom", etc.)
-   - A vague or spammy headline is a strong indicator even without the full profile
-"""
+        headline_context = f"\nHeadline from email: {extra_info}"
+        fallback_instruction = f"""
+- If you can't find their full profile, analyze their headline: "{extra_info}"
+- Look for MLM terms, "financial freedom", vague titles, excessive emojis"""
     else:
-        headline_info = "No headline was provided in the connection request"
-        headline_instruction = """
-4. If you cannot find their profile AND no headline was provided, that itself is a red flag
-   - Most legitimate professionals have a headline on LinkedIn
-   - Missing headline + unfindable profile suggests a spam/fake account
-"""
+        headline_context = ""
+        fallback_instruction = """
+- If you can't find ANY profile after searching, that itself is suspicious"""
 
-    user_message = f"""Analyze this LinkedIn connection request for spam indicators:
+    user_message = f"""Search for and analyze this person's LinkedIn profile:
 
-Name: {name}
-{headline_info}
+Name: {name}{headline_context}
 
-SEARCH STRATEGY:
+CRITICAL INSTRUCTIONS:
 1. Search: "{name}" LinkedIn
-2. Search: "{name}" LinkedIn Singapore  
-3. If you find a profile, analyze their headline, about section, and work history
-{headline_instruction}
-5. Make a decisive verdict - use all available information
+2. When you get results, LOOK AT THE URLS - find linkedin.com/in/ links
+3. The first few results will likely be their profile - examine them
+4. Extract their headline, about section, and current job from what you see
+5. If you see partial info in search snippets, use that for analysis
 
-Remember: Respond in the EXACT format specified in your system prompt."""
+WHAT TO LOOK FOR:
+Red flags: MLM/network marketing, "financial freedom", "passive income", life/business coaching with no credentials, crypto/forex trading, dropshipping, "quit my 9-5", excessive emojis, vague titles like "CEO | Entrepreneur | Visionary"
+Green flags: Real job at real company, technical skills, specific accomplishments, education credentials
+{fallback_instruction}
+
+IMPORTANT: Even if you only see their headline in search results, analyze it! Don't say "profile not found" if you can see ANY information about them.
+
+Respond in the exact format from your system prompt."""
 
     for attempt in range(3):
         try:
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=1024,
+                max_tokens=1500,  # Increased for longer analysis
                 system=SYSTEM_PROMPT,
                 tools=[
                     {
@@ -99,44 +100,38 @@ Remember: Respond in the EXACT format specified in your system prompt."""
                 ]
             )
 
-            # Extract text from ALL content blocks with detailed debugging
+            # Extract text from response
             raw_text = ""
             tool_used = False
             for block in response.content:
                 if hasattr(block, "text"):
                     raw_text += block.text
-                elif block.type == "tool_use":
+                elif block.type in ("tool_use", "server_tool_use"):
                     tool_used = True
                     logger.info(f"Claude used tool: {block.name}")
 
-            # Debug logging
-            logger.info(f"Tool used: {tool_used}, Got text: {bool(raw_text)}, Stop reason: {response.stop_reason}")
-            logger.info(f"Raw Claude response for {name}: '{raw_text[:500]}...'")  # Truncate for readability
-
-            # If we have text, parse it immediately
+            logger.info(f"Analyzed {name}: searches={tool_used}, got_text={bool(raw_text)}")
+            
             if raw_text:
                 return _parse_claude_response(raw_text, name)
 
-            # If no text but tool was used, we might need to wait for the response
-            logger.warning(f"Claude used tools but returned no text for {name}")
-            return _error_response(name, "Claude searched but returned no analysis")
+            logger.warning(f"No text response for {name}")
+            return _error_response(name, "No analysis returned")
 
         except anthropic.RateLimitError:
             if attempt < 2:
                 wait = 15 * (attempt + 1)
-                logger.info(f"Rate limited for {name}, retrying in {wait}s (attempt {attempt + 1}/3)...")
+                logger.info(f"Rate limited, retrying in {wait}s...")
                 await asyncio.sleep(wait)
             else:
-                logger.error(f"Rate limit hit 3 times for {name}, giving up")
-                return _error_response(name, "Rate limit reached, try again in a moment")
-
-        except anthropic.APIConnectionError:
-            logger.error("Anthropic API connection error")
-            return _error_response(name, "Could not connect to Claude API")
+                return _error_response(name, "Rate limit reached")
 
         except Exception as e:
-            logger.error(f"Claude analysis error for {name}: {e}")
+            logger.error(f"Analysis error: {e}")
             return _error_response(name, str(e)[:100])
+
+    return _error_response(name, "Max retries exceeded")
+
         
 def _parse_claude_response(text: str, name: str) -> dict:
     """Parse Claude's structured response into a dict."""
