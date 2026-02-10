@@ -101,7 +101,7 @@ async def check_gmail(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Analysis error for {name}: {e}")
             await person_msg.edit_text(f"❌ Could not analyze {name}: {str(e)[:100]}")
 
-        await asyncio.sleep(3)
+        await asyncio.sleep(15)
 
 
 async def lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):

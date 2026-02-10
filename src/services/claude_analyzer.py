@@ -61,7 +61,7 @@ Search for their LinkedIn profile and analyze it."""
     for attempt in range(3):
         try:
             response = client.messages.create(
-                model="claude-opus-4-5-20251101",
+                model="claude-haiku-4-5-20251001",
                 max_tokens=1024,
                 system=SYSTEM_PROMPT,
                 tools=[
