@@ -84,12 +84,12 @@ async def example(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(message)
 
-async def end(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """End message."""
-    await update.message.reply_text(
-        "👋 Thanks for using EntrepreNO Bot!\n"
-        "Feel free to reach out if you have any questions."
-    )
+# async def end(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     """End message."""
+#     await update.message.reply_text(
+#         "👋 Thanks for using EntrepreNO Bot!\n"
+#         "Feel free to reach out if you have any questions."
+#     )
 
 async def analyze_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Analyze LinkedIn profile from message."""
@@ -190,7 +190,7 @@ def main():
     
     # Run bot
     logger.info("Starting EntrepreNO Bot...")
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == '__main__':
