@@ -10,6 +10,7 @@ Flow:
 import os
 import logging
 from dotenv import load_dotenv
+import asyncio
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
@@ -99,6 +100,8 @@ async def check_gmail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Analysis error for {name}: {e}")
             await person_msg.edit_text(f"❌ Could not analyze {name}: {str(e)[:100]}")
+
+        await asyncio.sleep(3)
 
 
 async def lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
