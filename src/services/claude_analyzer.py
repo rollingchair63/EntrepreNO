@@ -144,18 +144,18 @@ async def analyze_profile_url(url: str) -> dict:
     """
     
     # Extract name from URL for the result
-    name = url.split("/in/")[-1].strip("/").replace("-", " ").title()
+    name_part = url.split("/in/")[-1].split("?")[0].strip("/").replace("-", " ")
+    name = name_part.title() if name_part else "Unknown"
     
-    user_message = f"""Fetch and analyze this LinkedIn profile for spam indicators:
+    user_message = f"""Search for and analyze this LinkedIn profile:
 
 URL: {url}
 
-Use web_fetch to read the profile page, then analyze:
-- Their headline
-- About/bio section  
-- Current job and company
-- Work history
-- Any visible activity
+INSTRUCTIONS:
+1. Use web_search to find information about this person
+2. Search for: "{name}" LinkedIn
+3. Also search the exact URL to see what's publicly available
+4. Analyze whatever information you find
 
 Red flags: MLM/network marketing, "financial freedom", "passive income", life/business coaching with no credentials, crypto/forex trading, dropshipping, "quit my 9-5", excessive emojis, vague titles like "CEO | Entrepreneur | Visionary"
 Green flags: Real job at real company, technical skills, specific accomplishments, education credentials
@@ -172,10 +172,6 @@ Respond in the exact format from your system prompt."""
                     {
                         "type": "web_search_20250305",
                         "name": "web_search",
-                    },
-                    {
-                        "type": "web_fetch_20250305",
-                        "name": "web_fetch",
                     }
                 ],
                 messages=[
