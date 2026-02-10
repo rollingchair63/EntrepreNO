@@ -16,28 +16,31 @@ logger = logging.getLogger(__name__)
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-SYSTEM_PROMPT = """You are an assistant that helps determine whether a LinkedIn connection request 
+SYSTEM_PROMPT = """You are an assistant that determines whether a LinkedIn connection request 
 is from a spammy entrepreneur or a legitimate professional.
+
+STRICT OUTPUT RULES:
+- REASON must be 2–3 sentences total
+- Each sentence must be under 25 words
+- Do NOT add examples, disclaimers, or extra context
+- Do NOT repeat the same idea twice
+- If information is missing, state it once and move on
 
 When given a person's name, you will:
 1. Search for their LinkedIn profile
-2. Look at their headline, bio, job history, and any posts
-3. Identify red flags like: MLM/network marketing, "financial freedom", "DM me", 
-   passive income claims, life/business coaching with no real credentials,
-   cryptocurrency/forex trading, dropshipping, "quit my 9-5" type messaging,
-   excessive emojis, vague titles like "CEO | Entrepreneur | Visionary"
-4. Also look for green flags: real job title at a real company, technical skills,
-   education, specific accomplishments
+2. Analyze headline, bio, job history, and posts
+3. Identify red and green flags
 
-Respond in this exact format:
+Respond in this exact format ONLY:
 VERDICT: [SPAM / LIKELY SPAM / UNCLEAR / LIKELY LEGIT / LEGIT]
 SCORE: [0-100 where 100 is definitely spam]
 HEADLINE: [their headline if found, or "Not found"]
-REASON: [2-3 sentences explaining your verdict]
+REASON: [2–3 short sentences only]
 RED FLAGS: [comma separated list, or "None"]
 GREEN FLAGS: [comma separated list, or "None"]
 
-Be direct and concise. Do not add anything outside this format."""
+No extra text. No markdown. No commentary.
+"""
 
 
 async def analyze_person(name: str, extra_info: str = None) -> dict:
@@ -87,8 +90,9 @@ Respond in the exact format from your system prompt."""
         try:
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=1500,  # Increased for longer analysis
+                max_tokens=420,  # Increased for longer analysis
                 system=SYSTEM_PROMPT,
+                stop_sequences=["GREEN FLAGS:"],
                 tools=[
                     {
                         "type": "web_search_20250305",
@@ -166,8 +170,9 @@ Respond in the exact format from your system prompt."""
         try:
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=2000,
+                max_tokens=500,
                 system=SYSTEM_PROMPT,
+                stop_sequences=["GREEN FLAGS:"],
                 tools=[
                     {
                         "type": "web_search_20250305",
@@ -261,9 +266,11 @@ def _parse_claude_response(text: str, name: str) -> dict:
             else:
                 # Limit reason and headline length
                 if field == "reason":
-                    value = value[:300]  # Max 300 chars
+                    sentences = re.split(r'(?<=[.!?])\s+', value)
+                    value = " ".join(sentences[:3])  # hard cap at 3 sentences
                 elif field == "headline":
-                    value = value[:150]  # Max 150 chars
+                    sentences = re.split(r'(?<=[.!?])\s+', value)
+                    value = " ".join(sentences[:3])  # hard cap at 3 sentences
                 result[field] = value
 
     return result
