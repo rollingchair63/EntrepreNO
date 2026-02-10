@@ -224,28 +224,46 @@ def _parse_claude_response(text: str, name: str) -> dict:
 
     import re
 
-    # Extract each field using regex so multiline values are captured
+    # Extract each field using regex - more careful parsing
     patterns = {
-        "verdict": r"VERDICT:\s*(.+?)(?=\n[A-Z ]+:|$)",
+        "verdict": r"VERDICT:\s*(.+?)(?=\n|$)",
         "score":   r"SCORE:\s*(\d+)",
-        "headline": r"HEADLINE:\s*(.+?)(?=\n[A-Z ]+:|$)",
-        "reason":  r"REASON:\s*(.+?)(?=\n[A-Z ]+:|$)",
-        "red_flags": r"RED FLAGS:\s*(.+?)(?=\n[A-Z ]+:|$)",
-        "green_flags": r"GREEN FLAGS:\s*(.+?)(?=\n[A-Z ]+:|$)",
+        "headline": r"HEADLINE:\s*(.+?)(?=\nVERDICT:|SCORE:|REASON:|RED FLAGS:|GREEN FLAGS:|$)",
+        "reason":  r"REASON:\s*(.+?)(?=\nVERDICT:|SCORE:|HEADLINE:|RED FLAGS:|GREEN FLAGS:|$)",
+        "red_flags": r"RED FLAGS:\s*(.+?)(?=\nVERDICT:|SCORE:|HEADLINE:|REASON:|GREEN FLAGS:|$)",
+        "green_flags": r"GREEN FLAGS:\s*(.+?)(?=\nVERDICT:|SCORE:|HEADLINE:|REASON:|RED FLAGS:|$)",
     }
 
     for field, pattern in patterns.items():
         match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
         if match:
             value = match.group(1).strip()
+            
+            # Clean up the value
+            value = re.sub(r'\*\*', '', value)  # Remove markdown bold
+            value = re.sub(r'\n\s*-\s*', ', ', value)  # Convert bullet lists to commas
+            value = re.sub(r'\s+', ' ', value)  # Normalize whitespace
+            value = value.strip()
+            
             if field == "score":
                 try:
                     result["score"] = int(value)
                 except ValueError:
                     pass
             elif field in ("red_flags", "green_flags"):
-                result[field] = [f.strip() for f in value.split(",") if f.strip() and f.strip().lower() != "none"]
+                # Split by comma and clean each item
+                flags = [f.strip() for f in value.split(",") if f.strip()]
+                # Remove "None" entries
+                flags = [f for f in flags if f.lower() != "none"]
+                # Limit to reasonable length
+                flags = [f[:100] for f in flags]  # Max 100 chars per flag
+                result[field] = flags[:5]  # Max 5 flags
             else:
+                # Limit reason and headline length
+                if field == "reason":
+                    value = value[:300]  # Max 300 chars
+                elif field == "headline":
+                    value = value[:150]  # Max 150 chars
                 result[field] = value
 
     return result
@@ -284,36 +302,46 @@ def format_analysis_message(result: dict) -> str:
     if score >= 0:
         filled = int(score / 10)
         bar = "█" * filled + "░" * (10 - filled)
-        score_line = f"📊 Spam Score: {score}%\n{bar}\n"
+        score_line = f"📊 Spam Score: {score}%\n{bar}"
     else:
         score_line = ""
 
-    msg = f"{verdict_emoji} {name}\n"
-    msg += "━" * 22 + "\n\n"
+    msg = f"{verdict_emoji} *{name}*\n"
+    msg += "━" * 22 + "\n"
 
     if result["headline"] and result["headline"] != "Not found":
-        msg += f"💼 {result['headline']}\n\n"
+        # Limit headline display
+        headline = result['headline'][:150]
+        msg += f"💼 {headline}\n\n"
 
-    msg += score_line + "\n"
-    msg += f"{verdict_emoji} {verdict}\n"
-    msg += f"{result['reason']}\n"
+    if score_line:
+        msg += f"{score_line}\n\n"
+    
+    msg += f"{verdict_emoji} *{verdict}*\n"
+    
+    # Limit reason length
+    reason = result['reason'][:250]
+    msg += f"{reason}\n"
 
-    if result["red_flags"]:
-        msg += f"\n🚩 Red flags:\n"
-        for flag in result["red_flags"]:
-            msg += f"  • {flag}\n"
+    # Show flags only if they exist and are reasonable
+    if result["red_flags"] and len(result["red_flags"]) > 0:
+        msg += f"\n🚩 *Red flags:*\n"
+        for flag in result["red_flags"][:3]:  # Max 3 flags
+            flag_text = flag[:80]  # Max 80 chars per flag
+            msg += f"  • {flag_text}\n"
 
-    if result["green_flags"]:
-        msg += f"\n✅ Green flags:\n"
-        for flag in result["green_flags"]:
-            msg += f"  • {flag}\n"
+    if result["green_flags"] and len(result["green_flags"]) > 0:
+        msg += f"\n✅ *Green flags:*\n"
+        for flag in result["green_flags"][:3]:  # Max 3 flags
+            flag_text = flag[:80]
+            msg += f"  • {flag_text}\n"
 
     # Recommendation
     if verdict in ("SPAM", "LIKELY SPAM"):
-        msg += "\n⚠️ Recommend: Decline"
+        msg += "\n⚠️ *Recommend:* Decline"
     elif verdict == "UNCLEAR":
-        msg += "\n💭 Recommend: Review manually"
+        msg += "\n💭 *Recommend:* Review manually"
     elif verdict in ("LEGIT", "LIKELY LEGIT"):
-        msg += "\n✅ Recommend: Safe to accept"
+        msg += "\n✅ *Recommend:* Safe to accept"
 
     return msg
