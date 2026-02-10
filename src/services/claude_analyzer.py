@@ -54,9 +54,14 @@ async def analyze_person(name: str, extra_info: str = None) -> dict:
     user_message = f"""Research this person and tell me if their LinkedIn connection request is spam:
 
 Name: {name}
-{f"Additional info: {extra_info}" if extra_info else ""}
+{f"Additional info from email: {extra_info}" if extra_info else ""}
 
-Search for their LinkedIn profile and analyze it."""
+Instructions:
+1. Search for: site:linkedin.com "{name}"
+2. Also search: "{name}" Singapore entrepreneur
+3. If you cannot find their LinkedIn profile, use any available info — especially the "Additional info from email" above, which contains their headline/job title.
+4. A vague headline like "Entrepreneur | Empowering others | Passionate & Driven" is itself a strong red flag even without the full profile.
+5. Make a verdict even with limited info — do not default to UNCLEAR just because the profile wasn't found."""
 
     for attempt in range(3):
         try:
