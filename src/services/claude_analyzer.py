@@ -50,10 +50,6 @@ async def analyze_person(name: str, extra_info: str = None) -> dict:
     Returns:
         dict with keys: verdict, score, headline, reason, red_flags, green_flags, raw
     """
-    search_query = f"{name} LinkedIn profile"
-    if extra_info:
-        search_query += f" {extra_info}"
-
     user_message = f"""Research this person and tell me if their LinkedIn connection request is spam:
 
 Name: {name}
@@ -61,40 +57,47 @@ Name: {name}
 
 Search for their LinkedIn profile and analyze it."""
 
-    try:
-        response = client.messages.create(
-            model="claude-opus-4-5-20251101",
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            tools=[
-                {
-                    "type": "web_search_20250305",
-                    "name": "web_search",
-                }
-            ],
-            messages=[
-                {"role": "user", "content": user_message}
-            ]
-        )
+    for attempt in range(3):
+        try:
+            response = client.messages.create(
+                model="claude-opus-4-5-20251101",
+                max_tokens=1024,
+                system=SYSTEM_PROMPT,
+                tools=[
+                    {
+                        "type": "web_search_20250305",
+                        "name": "web_search",
+                    }
+                ],
+                messages=[
+                    {"role": "user", "content": user_message}
+                ]
+            )
 
-        # Extract text from response
-        raw_text = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                raw_text += block.text
+            # Extract text from response
+            raw_text = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    raw_text += block.text
 
-        return _parse_claude_response(raw_text, name)
+            return _parse_claude_response(raw_text, name)
 
-    except anthropic.APIConnectionError:
-        logger.error("Anthropic API connection error")
-        return _error_response(name, "Could not connect to Claude API")
-    except anthropic.RateLimitError:
-        logger.error("Anthropic rate limit hit")
-        return _error_response(name, "Rate limit reached, try again in a moment")
-    except Exception as e:
-        logger.error(f"Claude analysis error for {name}: {e}")
-        return _error_response(name, str(e)[:100])
+        except anthropic.RateLimitError:
+            if attempt < 2:
+                wait = 15 * (attempt + 1)  # 15s, then 30s
+                logger.info(f"Rate limited for {name}, retrying in {wait}s (attempt {attempt + 1}/3)...")
+                await asyncio.sleep(wait)
+            else:
+                logger.error(f"Rate limit hit 3 times for {name}, giving up")
+                return _error_response(name, "Rate limit reached, try again in a moment")
 
+        except anthropic.APIConnectionError:
+            logger.error("Anthropic API connection error")
+            return _error_response(name, "Could not connect to Claude API")
+
+        except Exception as e:
+            logger.error(f"Claude analysis error for {name}: {e}")
+            return _error_response(name, str(e)[:100])
 
 def _parse_claude_response(text: str, name: str) -> dict:
     """Parse Claude's structured response into a dict."""
