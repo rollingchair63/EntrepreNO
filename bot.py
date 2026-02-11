@@ -64,11 +64,18 @@ async def end_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Stop the application gracefully
     application = context.application
-    await application.stop()
-    await application.shutdown()
     
-    # Exit the Python process
-    os._exit(0)
+    # Schedule shutdown after message is sent
+    import asyncio
+    async def delayed_shutdown():
+        await asyncio.sleep(1)  # Give time for message to send
+        await application.stop()
+        await application.shutdown()
+        # Force exit - kills all threads including health check
+        import sys
+        sys.exit(0)
+    
+    asyncio.create_task(delayed_shutdown())
 
 
 async def check_gmail(update: Update, context: ContextTypes.DEFAULT_TYPE):
