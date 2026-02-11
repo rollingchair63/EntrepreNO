@@ -40,10 +40,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Welcome to EntrepreNO Bot!\n\n"
         "I check your LinkedIn connection requests and tell you if they're spammy.\n\n"
-        "Commands:\n"
-        "/check — scan latest connection requests from Gmail\n"
-        "/end — shutdown the bot\n"
-        "/help — how to use"
+        "Use /check to scan your Gmail for connection requests."
     )
 
 
