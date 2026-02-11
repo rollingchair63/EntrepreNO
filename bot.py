@@ -128,11 +128,17 @@ async def check_gmail(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Redirect users who send anything other than commands."""
     await update.message.reply_text(
-        "I only respond to commands.\n\n"
-        "Available commands:\n"
+        "⚠️ Bot is not running or I only respond to commands.\n\n"
+        "To start the bot:\n"
+        "1. Open terminal/VSCode\n"
+        "2. Activate venv: `source venv/bin/activate` (Mac/Linux)\n"
+        "   or `venv\\Scripts\\activate` (Windows)\n"
+        "3. Run: `python bot.py`\n\n"
+        "Once running, available commands:\n"
         "/check — scan Gmail for connection requests\n"
         "/help — show instructions\n"
-        "/end — shutdown bot"
+        "/end — shutdown bot",
+        parse_mode="Markdown"
     )
 
 
