@@ -57,25 +57,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def end_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /end command to shutdown the bot."""
+    """Handle the /end command - just inform user."""
     await update.message.reply_text(
-        "🛑 Shutting down bot...\nGoodbye! 👋"
+        "To stop the bot:\n"
+        "Press Ctrl+C in your terminal/VSCode\n\n"
+        "This will cleanly shutdown everything."
     )
-    
-    # Stop the application gracefully
-    application = context.application
-    
-    # Schedule shutdown after message is sent
-    import asyncio
-    async def delayed_shutdown():
-        await asyncio.sleep(1)  # Give time for message to send
-        await application.stop()
-        await application.shutdown()
-        # Force exit - kills all threads including health check
-        import sys
-        sys.exit(0)
-    
-    asyncio.create_task(delayed_shutdown())
 
 
 async def check_gmail(update: Update, context: ContextTypes.DEFAULT_TYPE):
