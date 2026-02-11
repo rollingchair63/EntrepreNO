@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 import asyncio
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from src.services.gmail_service import fetch_connection_requests
 from src.services.claude_analyzer import analyze_person, format_analysis_message
@@ -128,6 +128,17 @@ async def check_gmail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(15)
 
 
+async def handle_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Redirect users who send anything other than commands."""
+    await update.message.reply_text(
+        "I only respond to commands.\n\n"
+        "Available commands:\n"
+        "/check — scan Gmail for connection requests\n"
+        "/help — show instructions\n"
+        "/end — shutdown bot"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -171,6 +182,9 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("check", check_gmail))
     application.add_handler(CommandHandler("end", end_command))
+    
+    # Catch-all for any non-command text
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unknown))
 
     logger.info("EntrepreNO Bot running...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
