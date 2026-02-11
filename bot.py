@@ -14,10 +14,10 @@ from dotenv import load_dotenv
 import asyncio
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 from src.services.gmail_service import fetch_connection_requests
-from src.services.claude_analyzer import analyze_person, analyze_profile_url, format_analysis_message
+from src.services.claude_analyzer import analyze_person, format_analysis_message
 
 load_dotenv()
 
@@ -26,6 +26,10 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Cache for analysis results to prevent inconsistent verdicts
+# Key: person name (lowercase), Value: analysis result dict
+analysis_cache = {}
 
 
 # ---------------------------------------------------------------------------
@@ -39,25 +43,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Commands:\n"
         "/check — scan latest connection requests from Gmail\n"
         "/end — shutdown the bot\n"
-        "/help — how to use\n\n"
-        "Quick tip: Just type a name like 'John Doe' to research someone!"
+        "/help — how to use"
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📖 How to use:\n\n"
-        "Option 1 — Auto scan:\n"
-        "  /check\n"
-        "  Reads your Gmail for LinkedIn\n"
-        "  connection requests and scores\n"
-        "  each person automatically.\n\n"
-        "Option 2 — Manual lookup:\n"
-        "  Just type: John Doe\n"
-        "  Or paste a LinkedIn URL\n\n"
+        "Use /check to scan your Gmail for LinkedIn connection requests.\n"
+        "I'll analyze each person and tell you if they're spammy.\n\n"
         "First time setup:\n"
-        "  Run: python -m src.services.gmail_service\n"
-        "  to authorize Gmail access."
+        "Run: `python -m src.services.gmail_service`\n"
+        "to authorize Gmail access.",
+        parse_mode="Markdown"
     )
 
 
@@ -106,61 +104,28 @@ async def check_gmail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, req in enumerate(requests, 1):
         name = req["name"]
         extra = req.get("extra_info")
+        cache_key = name.lower()
 
         person_msg = await update.message.reply_text(f"🔎 Researching {name}...")
 
         try:
-            result = await analyze_person(name, extra)
+            # Check cache first
+            if cache_key in analysis_cache:
+                logger.info(f"Using cached result for {name}")
+                result = analysis_cache[cache_key]
+            else:
+                # Analyze and cache
+                result = await analyze_person(name, extra)
+                analysis_cache[cache_key] = result
+                logger.info(f"Cached new result for {name}")
+            
             response = format_analysis_message(result)
-            await person_msg.edit_text(response)
+            await person_msg.edit_text(response, parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Analysis error for {name}: {e}")
             await person_msg.edit_text(f"❌ Could not analyze {name}: {str(e)[:100]}")
 
         await asyncio.sleep(15)
-
-
-async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle plain text - detect names or LinkedIn URLs."""
-    text = update.message.text.strip()
-    
-    # Check if it's a LinkedIn URL
-    if "linkedin.com/in/" in text:
-        msg = await update.message.reply_text("🔎 Fetching profile...")
-        try:
-            result = await analyze_profile_url(text)
-            response = format_analysis_message(result)
-            await msg.edit_text(response)
-        except Exception as e:
-            logger.error(f"URL lookup error: {e}")
-            await msg.edit_text(
-                f"❌ Could not fetch profile.\n\n"
-                f"LinkedIn may be blocking access.\n"
-                f"Error: {str(e)[:150]}"
-            )
-        return
-    
-    # Check if it looks like a name (2-4 words, title case)
-    words = text.split()
-    if 2 <= len(words) <= 4 and all(w[0].isupper() for w in words if w):
-        msg = await update.message.reply_text(f"🔎 Researching {text}...")
-        try:
-            result = await analyze_person(text)
-            response = format_analysis_message(result)
-            await msg.edit_text(response)
-        except Exception as e:
-            logger.error(f"Name lookup error: {e}")
-            await msg.edit_text(f"❌ Could not analyze {text}: {str(e)[:100]}")
-        return
-    
-    # Doesn't match any pattern
-    await update.message.reply_text(
-        "Not sure what to do with that.\n\n"
-        "Try:\n"
-        "• /check — scan Gmail\n"
-        "• Type a name: John Doe\n"
-        "• Paste a LinkedIn URL"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -201,14 +166,11 @@ def main():
     # Build bot
     application = Application.builder().token(token).build()
 
-    # Command handlers
+    # Command handlers only - no text handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("check", check_gmail))
     application.add_handler(CommandHandler("end", end_command))
-    
-    # Plain text handler for names and URLs
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     logger.info("EntrepreNO Bot running...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
