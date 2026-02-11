@@ -221,68 +221,6 @@ Respond in the exact format from your system prompt."""
     return _error_response(name, "Max retries exceeded")
 
 
-async def analyze_text_content(name: str, profile_text: str) -> dict:
-    """
-    Analyze LinkedIn profile content provided directly by user.
-
-    Args:
-        name: Person's name
-        profile_text: Their headline, bio, or any profile text
-
-    Returns:
-        dict with keys: verdict, score, headline, reason, red_flags, green_flags, raw
-    """
-    
-    user_message = f"""Analyze this LinkedIn profile information for spam indicators:
-
-Name: {name}
-Profile content: {profile_text}
-
-Analyze ONLY the profile content provided:
-Red flags: MLM/network marketing, "financial freedom", "passive income", life/business coaching with no credentials, crypto/forex trading, dropshipping, "quit my 9-5", excessive emojis, vague titles like "CEO | Entrepreneur | Visionary", "helping people", "empowering others"
-Green flags: Real job at real company, technical skills, specific accomplishments, education credentials, concrete job titles
-
-DO NOT consider how they connected or why - focus ONLY on profile content.
-
-Respond in the exact format from your system prompt."""
-
-    for attempt in range(3):
-        try:
-            response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=1500,
-                system=SYSTEM_PROMPT,
-                messages=[
-                    {"role": "user", "content": user_message}
-                ]
-            )
-
-            raw_text = ""
-            for block in response.content:
-                if hasattr(block, "text"):
-                    raw_text += block.text
-
-            logger.info(f"Analyzed text content for {name}")
-            
-            if raw_text:
-                return _parse_claude_response(raw_text, name)
-
-            return _error_response(name, "No analysis returned")
-
-        except anthropic.RateLimitError:
-            if attempt < 2:
-                wait = 15 * (attempt + 1)
-                await asyncio.sleep(wait)
-            else:
-                return _error_response(name, "Rate limit reached")
-
-        except Exception as e:
-            logger.error(f"Text analysis error: {e}")
-            return _error_response(name, str(e)[:100])
-
-    return _error_response(name, "Max retries exceeded")
-
-
 def _parse_claude_response(text: str, name: str) -> dict:
     """Parse Claude's structured response into a dict."""
     result = {
