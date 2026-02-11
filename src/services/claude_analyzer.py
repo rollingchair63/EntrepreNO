@@ -383,7 +383,7 @@ def format_analysis_message(result: dict) -> str:
     else:
         score_line = ""
 
-    msg = f"{verdict_emoji} *{name}*\n"
+    msg = f"{verdict_emoji} {name}\n"
     msg += "━" * 22 + "\n"
 
     if result["headline"] and result["headline"] != "Not found":
@@ -394,31 +394,27 @@ def format_analysis_message(result: dict) -> str:
     if score_line:
         msg += f"{score_line}\n\n"
     
-    msg += f"{verdict_emoji} *{verdict}*\n"
-    
-    # Limit reason length
-    reason = result['reason'][:250]
-    msg += f"{reason}\n"
+    msg += f"{verdict_emoji} {verdict}\n"
 
     # Show flags only if they exist and are reasonable
     if result["red_flags"] and len(result["red_flags"]) > 0:
-        msg += f"\n🚩 *Red flags:*\n"
+        msg += f"\n🚩 Red flags:\n"
         for flag in result["red_flags"][:3]:  # Max 3 flags
             flag_text = flag[:80]  # Max 80 chars per flag
             msg += f"  • {flag_text}\n"
 
     if result["green_flags"] and len(result["green_flags"]) > 0:
-        msg += f"\n✅ *Green flags:*\n"
+        msg += f"\n✅ Green flags:\n"
         for flag in result["green_flags"][:3]:  # Max 3 flags
             flag_text = flag[:80]
             msg += f"  • {flag_text}\n"
 
     # Recommendation
     if verdict in ("SPAM", "LIKELY SPAM"):
-        msg += "\n⚠️ *Recommend:* Decline"
+        msg += "\n⚠️ Recommend: Decline"
     elif verdict == "UNCLEAR":
-        msg += "\n💭 *Recommend:* Review manually"
+        msg += "\n💭 Recommend: Review manually"
     elif verdict in ("LEGIT", "LIKELY LEGIT"):
-        msg += "\n✅ *Recommend:* Safe to accept"
+        msg += "\n✅ Recommend: Safe to accept"
 
     return msg
