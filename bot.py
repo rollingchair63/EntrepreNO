@@ -186,6 +186,17 @@ def main():
     # Catch-all for any non-command text
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unknown))
 
+    # Set bot commands menu (appears at bottom of Telegram chat)
+    async def post_init(application: Application) -> None:
+        await application.bot.set_my_commands([
+            ("start", "Start the bot"),
+            ("check", "Scan Gmail for LinkedIn requests"),
+            ("help", "Show instructions"),
+            ("end", "Shutdown the bot"),
+        ])
+    
+    application.post_init = post_init
+
     logger.info("EntrepreNO Bot running...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
