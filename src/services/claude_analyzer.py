@@ -16,31 +16,35 @@ logger = logging.getLogger(__name__)
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-SYSTEM_PROMPT = """You are an assistant that determines whether a LinkedIn connection request 
+SYSTEM_PROMPT = """You are an assistant that helps determine whether a LinkedIn connection request 
 is from a spammy entrepreneur or a legitimate professional.
 
-STRICT OUTPUT RULES:
-- REASON must be 2–3 sentences total
-- Each sentence must be under 25 words
-- Do NOT add examples, disclaimers, or extra context
-- Do NOT repeat the same idea twice
-- If information is missing, state it once and move on
+When given a person's profile information, you will:
+1. Analyze their headline, bio, job title, and work history
+2. Identify red flags like: MLM/network marketing, "financial freedom", "DM me", 
+   passive income claims, life/business coaching with no real credentials,
+   cryptocurrency/forex trading, dropshipping, "quit my 9-5" type messaging,
+   excessive emojis, vague titles like "CEO | Entrepreneur | Visionary",
+   "helping people achieve", "empowering others"
+3. Look for green flags: real job title at a real company, technical skills,
+   education, specific accomplishments, concrete industry experience
 
-When given a person's name, you will:
-1. Search for their LinkedIn profile
-2. Analyze headline, bio, job history, and posts
-3. Identify red and green flags
+CRITICAL RULES:
+- Base your verdict ONLY on their profile content (headline, bio, job history)
+- DO NOT consider how they found the user or why they're connecting
+- DO NOT mark as spam just because they sent a connection request
+- DO NOT consider whether the email was forwarded or who it was addressed to
+- ONLY flag if their PROFILE shows clear MLM/spam entrepreneur patterns
 
-Respond in this exact format ONLY:
+Respond in this exact format:
 VERDICT: [SPAM / LIKELY SPAM / UNCLEAR / LIKELY LEGIT / LEGIT]
 SCORE: [0-100 where 100 is definitely spam]
 HEADLINE: [their headline if found, or "Not found"]
-REASON: [2–3 short sentences only]
-RED FLAGS: [comma separated list, or "None"]
-GREEN FLAGS: [comma separated list, or "None"]
+REASON: [2-3 sentences explaining your verdict based on PROFILE CONTENT ONLY]
+RED FLAGS: [comma separated list based on profile content, or "None"]
+GREEN FLAGS: [comma separated list based on profile content, or "None"]
 
-No extra text. No markdown. No commentary.
-"""
+Be direct and concise. Do not add anything outside this format."""
 
 
 async def analyze_person(name: str, extra_info: str = None) -> dict:
@@ -77,12 +81,16 @@ CRITICAL INSTRUCTIONS:
 4. Extract their headline, about section, and current job from what you see
 5. If you see partial info in search snippets, use that for analysis
 
-WHAT TO LOOK FOR:
-Red flags: MLM/network marketing, "financial freedom", "passive income", life/business coaching with no credentials, crypto/forex trading, dropshipping, "quit my 9-5", excessive emojis, vague titles like "CEO | Entrepreneur | Visionary"
-Green flags: Real job at real company, technical skills, specific accomplishments, education credentials
+WHAT TO ANALYZE (PROFILE CONTENT ONLY):
+Red flags in their PROFILE: MLM/network marketing, "financial freedom", "passive income", life/business coaching with no credentials, crypto/forex trading, dropshipping, "quit my 9-5", excessive emojis, vague titles like "CEO | Entrepreneur | Visionary", "helping you achieve", "empowering others to"
+Green flags in their PROFILE: Real job at real company, technical skills, specific accomplishments, education credentials, concrete job titles
 {fallback_instruction}
 
-IMPORTANT: Even if you only see their headline in search results, analyze it! Don't say "profile not found" if you can see ANY information about them.
+IMPORTANT: 
+- Base your analysis ONLY on their profile content
+- DO NOT consider how they found the user or connection context
+- DO NOT mark as spam just for sending a connection request
+- ONLY flag MLM/spam entrepreneur patterns in their actual profile
 
 Respond in the exact format from your system prompt."""
 
@@ -90,9 +98,8 @@ Respond in the exact format from your system prompt."""
         try:
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=420,  # Increased for longer analysis
+                max_tokens=1500,
                 system=SYSTEM_PROMPT,
-                stop_sequences=["GREEN FLAGS:"],
                 tools=[
                     {
                         "type": "web_search_20250305",
@@ -136,6 +143,7 @@ Respond in the exact format from your system prompt."""
 
     return _error_response(name, "Max retries exceeded")
 
+
 async def analyze_profile_url(url: str) -> dict:
     """
     Fetch and analyze a LinkedIn profile directly from URL.
@@ -159,10 +167,13 @@ INSTRUCTIONS:
 1. Use web_search to find information about this person
 2. Search for: "{name}" LinkedIn
 3. Also search the exact URL to see what's publicly available
-4. Analyze whatever information you find
+4. Analyze whatever information you find about their PROFILE
 
+ANALYZE THEIR PROFILE ONLY:
 Red flags: MLM/network marketing, "financial freedom", "passive income", life/business coaching with no credentials, crypto/forex trading, dropshipping, "quit my 9-5", excessive emojis, vague titles like "CEO | Entrepreneur | Visionary"
 Green flags: Real job at real company, technical skills, specific accomplishments, education credentials
+
+DO NOT consider connection context - only analyze profile content.
 
 Respond in the exact format from your system prompt."""
 
@@ -170,9 +181,8 @@ Respond in the exact format from your system prompt."""
         try:
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=500,
+                max_tokens=2000,
                 system=SYSTEM_PROMPT,
-                stop_sequences=["GREEN FLAGS:"],
                 tools=[
                     {
                         "type": "web_search_20250305",
@@ -210,7 +220,69 @@ Respond in the exact format from your system prompt."""
 
     return _error_response(name, "Max retries exceeded")
 
-        
+
+async def analyze_text_content(name: str, profile_text: str) -> dict:
+    """
+    Analyze LinkedIn profile content provided directly by user.
+
+    Args:
+        name: Person's name
+        profile_text: Their headline, bio, or any profile text
+
+    Returns:
+        dict with keys: verdict, score, headline, reason, red_flags, green_flags, raw
+    """
+    
+    user_message = f"""Analyze this LinkedIn profile information for spam indicators:
+
+Name: {name}
+Profile content: {profile_text}
+
+Analyze ONLY the profile content provided:
+Red flags: MLM/network marketing, "financial freedom", "passive income", life/business coaching with no credentials, crypto/forex trading, dropshipping, "quit my 9-5", excessive emojis, vague titles like "CEO | Entrepreneur | Visionary", "helping people", "empowering others"
+Green flags: Real job at real company, technical skills, specific accomplishments, education credentials, concrete job titles
+
+DO NOT consider how they connected or why - focus ONLY on profile content.
+
+Respond in the exact format from your system prompt."""
+
+    for attempt in range(3):
+        try:
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1500,
+                system=SYSTEM_PROMPT,
+                messages=[
+                    {"role": "user", "content": user_message}
+                ]
+            )
+
+            raw_text = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    raw_text += block.text
+
+            logger.info(f"Analyzed text content for {name}")
+            
+            if raw_text:
+                return _parse_claude_response(raw_text, name)
+
+            return _error_response(name, "No analysis returned")
+
+        except anthropic.RateLimitError:
+            if attempt < 2:
+                wait = 15 * (attempt + 1)
+                await asyncio.sleep(wait)
+            else:
+                return _error_response(name, "Rate limit reached")
+
+        except Exception as e:
+            logger.error(f"Text analysis error: {e}")
+            return _error_response(name, str(e)[:100])
+
+    return _error_response(name, "Max retries exceeded")
+
+
 def _parse_claude_response(text: str, name: str) -> dict:
     """Parse Claude's structured response into a dict."""
     result = {
@@ -266,11 +338,9 @@ def _parse_claude_response(text: str, name: str) -> dict:
             else:
                 # Limit reason and headline length
                 if field == "reason":
-                    sentences = re.split(r'(?<=[.!?])\s+', value)
-                    value = " ".join(sentences[:3])  # hard cap at 3 sentences
+                    value = value[:300]  # Max 300 chars
                 elif field == "headline":
-                    sentences = re.split(r'(?<=[.!?])\s+', value)
-                    value = " ".join(sentences[:3])  # hard cap at 3 sentences
+                    value = value[:150]  # Max 150 chars
                 result[field] = value
 
     return result
